@@ -17,6 +17,20 @@
 #define _countof(arr) (sizeof(arr)/sizeof((arr)[0]))
 #endif
 
+
+#define ifelse1(func, p1, e1)\
+  if((func)(p1)) e1
+
+#define ifelse2(func, p1, e1, ...)	\
+  ifelse1(func,p1,e1) else ifelse1(func, __VA_ARGS__)
+
+#define ifelse3(func, p1, e1, ...)			\
+  ifelse1(func,p1,e1) else ifelse2(func, __VA_ARGS__)
+
+#define ifelse4(func, p1, e1, ...)	\
+  ifelse1(func,p1,e1) else ifelse3(func, __VA_ARGS__)
+
+
 typedef struct StringView StringView;
 struct StringView{
   size_t len;
@@ -221,21 +235,9 @@ IVec2 get_next_maze_cell(size_t size, int maze[size][size], IVec2 cell){
   }
   return candidates[rand() % count];
 }
-
-IVec2 make_one_more_maze(size_t size, int maze[size][size], IVec2 last_cell){
-  //0 -> unexplored 1-> wall 2-> explored 3-> explored and is boundary
-
-  IVec2 next_cell = get_next_maze_cell(size, maze, last_cell);
-  if(is_valid_pos(next_cell.i, next_cell.j, size)){
-    IVec2 another_cell = {
-      .i=last_cell.i + 2 * (next_cell.i - last_cell.i),
-      .j=last_cell.j + 2 * (next_cell.j - last_cell.j)
-    };
-    maze[next_cell.i][next_cell.j] = 3;
-    maze[another_cell.i][another_cell.j] = 3;
-    return another_cell;
-  }
-
+IVec2 add_maze_cell_bfs(size_t size, int maze[size][size]){
+  IVec2 next_cell ;
+  IVec2 last_cell;
   int count = 0;
   for(int i = 0; i < size; ++i){
     for(int j = 0; j < size; ++j){
@@ -268,6 +270,22 @@ IVec2 make_one_more_maze(size_t size, int maze[size][size], IVec2 last_cell){
   assert(false);
   return (IVec2){-2,-2};
 }
+IVec2 add_maze_cell_dfs(size_t size, int maze[size][size], IVec2 last_cell){
+  //0 -> unexplored 1-> wall 2-> explored 3-> explored and is boundary
+
+  IVec2 next_cell = get_next_maze_cell(size, maze, last_cell);
+  if(is_valid_pos(next_cell.i, next_cell.j, size)){
+    IVec2 another_cell = {
+      .i=last_cell.i + 2 * (next_cell.i - last_cell.i),
+      .j=last_cell.j + 2 * (next_cell.j - last_cell.j)
+    };
+    maze[next_cell.i][next_cell.j] = 3;
+    maze[another_cell.i][another_cell.j] = 3;
+    return another_cell;
+  }
+  return (IVec2){-1,-1};
+  //return add_maze_cell_bfs(size, maze);
+}
 
 void reset_maze(size_t size, int maze[size][size], IVec2* last_cell){
   //fill
@@ -280,6 +298,74 @@ void reset_maze(size_t size, int maze[size][size], IVec2* last_cell){
   maze[0][0] = 3;
   *last_cell=(IVec2){0,0};
 }
+
+enum{
+  MAX_PATH_FACTOR = 10
+};
+
+size_t solve_one_hand_on_wall(size_t size, int maze[size][size], int path[MAX_PATH_FACTOR * size*size], size_t path_len){
+  if(size < 2)
+    return path_len;
+    
+  if(0 == path_len){
+    path_len++;
+    path[0] = 0;
+  }
+    
+
+  IVec2 c1,c2;
+  int curr_val;
+  if(1 == path_len){
+    c2 = (IVec2){
+      .i = path[path_len-1] / size,
+      .j = path[path_len-1] % size
+    };
+    c1 = (IVec2){
+      .i = c2.i-1,
+      .j = c2.j
+    };
+  }
+  else{ 
+    c1 = (IVec2){
+      .i = path[path_len-2] / size,
+      .j = path[path_len-2] % size
+    };
+    c2 = (IVec2){
+      .i = path[path_len-1] / size,
+      .j = path[path_len-1] % size
+    };
+  }
+
+  //Collect neighbours
+  curr_val = maze[c2.i][c2.j];
+
+  //Now begin rotating c1 -> c2
+  for(int i = 0; i < 4; ++i){
+    //Difference
+    IVec2 diff = {
+      .x = c2.x - c1.x,
+      .y = c2.y - c1.y
+    };
+    //Rotate by 90
+    IVec2 rot = {
+      .x = -diff.y,
+      .y = diff.x
+    };
+    //Add to c1
+    c1.x = c2.x + rot.x;
+    c1.y = c2.y + rot.y;
+    //Find if c1 is suitable
+    if(is_valid_pos(c1.i, c1.j, size) &&
+       (curr_val == maze[c1.i][c1.j])){
+      path[path_len] = c1.j + c1.i * size;
+      path_len++;
+      break;
+    }
+  }
+  return path_len;
+}
+
+
 
 int main(int argc, char* argv[]){
   rl_init_lib("raylib");
@@ -308,8 +394,10 @@ int main(int argc, char* argv[]){
     PINK
   };
   
-  enum{MAZE_SIZE = 45};
+  enum{MAZE_SIZE = 31};
   int maze[MAZE_SIZE][MAZE_SIZE] = {0};
+
+  
   IVec2 last_cell;
   reset_maze(MAZE_SIZE, maze, &last_cell);
   
@@ -317,6 +405,12 @@ int main(int argc, char* argv[]){
   int cell_wid = 5*win_wid / (7*MAZE_SIZE);
   int cell_hei = 5*win_hei / (7*MAZE_SIZE);
 
+  int curr_path[MAX_PATH_FACTOR * MAZE_SIZE * MAZE_SIZE] = {0};
+  size_t curr_path_len=1;
+  
+
+  int turn_counter = 0;
+  
   while(!rl_window_should_close()){
     IVec2 mpos = {
       .y = rl_get_mouse_y(),
@@ -337,20 +431,65 @@ int main(int argc, char* argv[]){
     }
 
     if(m_in_cell){
-      if(rl_is_mouse_button_down(MOUSE_BUTTON_LEFT))
-	maze[m_cell.i][m_cell.j] = 1;
-      if(rl_is_mouse_button_down(MOUSE_BUTTON_RIGHT))
-	maze[m_cell.i][m_cell.j] = 0;
-      //flood_fill(MAZE_SIZE, maze, m_cell, maze[m_cell.i][m_cell.j], 2, 3);
+      ifelse4(rl_is_key_released,
+	      '0', maze[m_cell.i][m_cell.j] = 0;,
+	      '1', maze[m_cell.i][m_cell.j] = 1;,
+	      '2', maze[m_cell.i][m_cell.j] = 2;,
+	      '3', maze[m_cell.i][m_cell.j] = 3;);
     }
+
+    if(curr_path_len < _countof(curr_path)){
+      int inx = curr_path[curr_path_len-1];
+      int i = inx / MAZE_SIZE;
+      int j = inx % MAZE_SIZE;
+    
+      if(rl_is_key_pressed(KEY_RIGHT) &&
+	 (j < (MAZE_SIZE -1))){
+	j++;
+	inx = i * MAZE_SIZE + j;
+	curr_path[curr_path_len++] = inx;
+      }
+      
+      if(rl_is_key_pressed(KEY_LEFT) &&
+	 (j > 0)){
+	j--;
+	inx = i * MAZE_SIZE + j;
+	curr_path[curr_path_len++] = inx;
+      }	
+	
+      if(rl_is_key_pressed(KEY_DOWN) &&
+	 (i < (MAZE_SIZE -1))){
+	i++;
+	inx = i * MAZE_SIZE + j;
+	curr_path[curr_path_len++] = inx;
+      }
+      
+      if(rl_is_key_pressed(KEY_UP) &&
+	 (i > 0)){
+	i--;
+	inx = i * MAZE_SIZE + j;
+	curr_path[curr_path_len++] = inx;
+      }
+    }
+      
     
     if(rl_is_key_down(' ')){
-      last_cell =  make_one_more_maze(MAZE_SIZE, maze, last_cell);
+      if(turn_counter < 8)
+	last_cell =  add_maze_cell_dfs(MAZE_SIZE, maze, last_cell);
+      else
+	last_cell = add_maze_cell_bfs(MAZE_SIZE, maze);
+      turn_counter = (turn_counter+1)%9;
     }
     if(rl_is_key_pressed('R')){
       reset_maze(MAZE_SIZE, maze, &last_cell);
+      curr_path_len = 1;
     }
-    
+    if(rl_is_key_pressed('P')){
+      curr_path_len = 1;
+    }
+    if(rl_is_key_down('H')){
+      curr_path_len = solve_one_hand_on_wall(MAZE_SIZE, maze,curr_path, curr_path_len);
+    }
     rl_begin_drawing();
     rl_clear_background(RAYWHITE);
     for(int i=0;i<MAZE_SIZE;++i){
@@ -368,8 +507,35 @@ int main(int argc, char* argv[]){
 			      BLACK);
     }
 
+    //Draw path
+    for(size_t i = 0; i < curr_path_len-1; ++i){
+      IVec2 src={
+	.i = curr_path[i] / MAZE_SIZE,
+	.j = curr_path[i] % MAZE_SIZE,
+      };
+      IVec2 dst={
+	.i = curr_path[i+1] / MAZE_SIZE,
+	.j = curr_path[i+1] % MAZE_SIZE,
+      };
+      src.x = win_wid/7 + cell_wid * (src.x + 0.5f);
+      src.y = win_hei/7 + cell_hei * (src.y + 0.5f);
+      dst.x = win_wid/7 + cell_wid * (dst.x + 0.5f);
+      dst.y = win_hei/7 + cell_hei * (dst.y + 0.5f);
+      rl_draw_line(src.x,src.y,dst.x, dst.y, BLACK);
+    }
+    if(curr_path_len > 0){
+      IVec2 head = {
+	.i = curr_path[curr_path_len-1] / MAZE_SIZE,
+	.j = curr_path[curr_path_len-1] % MAZE_SIZE
+      };
+      head.x = win_wid/7 + cell_wid * (head.x + 0.5f);
+      head.y = win_hei/7 + cell_hei * (head.y + 0.5f);
+      rl_draw_circle(head.x , head.y, (cell_wid + cell_hei)/4, RED);
+    }
+      
     rl_draw_text("Hello sweetie", win_wid*3/7, cell_hei, 25, MAGENTA);
-        
+
+    
     rl_end_drawing();
   }
   rl_close_window();
