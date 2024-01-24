@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?> 
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010"> 
+  <UIVisualizer ServiceId="{A452AFEA-3DF6-46BB-9177-C0B08F318025}" Id="1"  
+                MenuName="Add to Image Watch"/> 
+  <Type Name="MazeDataType"> 
+    <UIVisualizer ServiceId="{A452AFEA-3DF6-46BB-9177-C0B08F318025}" Id="1" /> 
+  </Type> 
+  <Type Name="MazeDataType"> 
+    <Expand> 
+      <Synthetic Name="[type]"> 
+        <DisplayString>INT32</DisplayString> 
+      </Synthetic> 
+      <Synthetic Name="[channels]"> 
+        <DisplayString>1</DisplayString> 
+      </Synthetic>
+      <Synthetic Name="[range]">
+	<DisplayString>levels</DisplayString>
+      </Synthetic>
+      <Item Name="[width]">width</Item> 
+      <Item Name="[height]">width</Item> 
+      <Item Name="[data]">board</Item>
+    </Expand> 
+  </Type>   
+</AutoVisualizer>
