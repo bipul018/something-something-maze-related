@@ -303,6 +303,148 @@ enum{
   MAX_PATH_FACTOR = 10
 };
 
+void init_dum_maze_data(size_t size,const int og_maze[size][size], int dum_maze[size][size], IVec2* init_pos, IVec2* init_dir){
+  init_pos->i = init_pos->j = 0;
+  for(size_t i = 0; i < size; ++i)
+    for(size_t j = 0; j < size; ++j)
+      dum_maze[i][j] = 3;
+  dum_maze[0][0] = 2;
+
+  //Find dir by og maze data
+  if(1 != og_maze[1][0])
+    *init_dir = (IVec2){.i = 1, .j = 0};
+  else
+    *init_dir = (IVec2){.i = 0, .j = 1};
+}
+
+size_t fill_path_by_dum_maze(size_t size, int maze[size][size],
+			     int path[size * size]){
+
+  IVec2 cell = {0,0};
+  IVec2 dir ;
+  if(1 != maze[1][0])
+    dir=(IVec2){.i = 1, .j = 0};
+  else
+    dir=(IVec2){.i = 0, .j = 1};
+  size_t path_len = 1;
+  path[0] = 0;
+  
+  while(path_len < size*size){
+    int inx = 0;
+    {
+      IVec2 rot = {
+	.x = dir.y,
+	.y = -dir.x,
+      };
+      dir = rot;
+    }
+    for(;inx < 3; ++inx){
+    
+      IVec2 adj = {
+	.x = cell.x + dir.x,
+	.y = cell.y + dir.y
+      };
+
+      IVec2 rot = {
+	.x = -dir.y,
+	.y = dir.x
+      };
+
+      if(is_valid_pos(adj.i, adj.j, size)&&
+	 (2 == maze[adj.i][adj.j])){
+	cell = adj;
+	path[path_len++] = adj.j + adj.i * size;
+	break;
+      }
+      dir = rot;
+    }
+    if(inx == 3)
+      break;
+  } 
+  return path_len;
+}
+
+bool move_one_step_in_dum_maze(size_t size, int dum_maze[size][size],
+			       IVec2* ppos,IVec2* pdir, int og_maze[size][size]){
+  //In the og_maze, 0 and 3 are used in maze making step only
+  // 1 means wall, 2 means path
+
+  //In this dum_maze, we assign 1 and 2 to processed and 0 and 3 to unprocessed
+  //1 is wall or unreachable path
+  //2 is visited path, which can have at most two adjacents at a time
+  //0 means there is a path but it is not processed 3 means we don't know anything
+
+  //Need to handle first case, where dir is 0,0 later
+  IVec2 dir;
+  if(!(pdir->i || pdir->j)){
+    assert(false);
+    dir = (IVec2){
+      1,0
+    };
+  }
+  dir = *pdir;
+  //Rotate -90 first
+  {
+    IVec2 rot = {.x = dir.y, .y = -dir.x};
+    dir = rot;
+  }
+
+  //3 dirs for simulating 'robot', for this just use predefined one of 3
+  //'left' 'straight' and 'right'
+
+  int inx = 0;
+  for(; inx < 3; ++inx){
+ 
+    IVec2 next_pos = {
+      .x = ppos->x + dir.x,
+      .y = ppos->y + dir.y,
+    };
+    if(is_valid_pos(next_pos.i, next_pos.j, size)){
+      //Query data from og maze if not available
+      if(3 == dum_maze[next_pos.i][next_pos.j]){
+	dum_maze[next_pos.i][next_pos.j] = og_maze[next_pos.i][next_pos.j];
+	if(1 != dum_maze[next_pos.i][next_pos.j])
+	  dum_maze[next_pos.i][next_pos.j] = 0;
+      }
+      if(0 == dum_maze[next_pos.i][next_pos.j]){
+	//This is it, move here
+	dum_maze[next_pos.i][next_pos.j] = 2;
+	*pdir = dir;
+	*ppos = next_pos;
+	return true;
+      }
+      if(2 == dum_maze[next_pos.i][next_pos.j]){
+	//This happens when backtracking
+	dum_maze[next_pos.i][next_pos.j] = 2;
+	dum_maze[ppos->i][ppos->j] = 1;
+	*pdir = dir;
+	*ppos = next_pos;
+	return true;
+      }
+    }
+    
+    IVec2 rot = {.x = -dir.y, .y = dir.x};
+    dir = rot;
+       
+  }
+
+  if(3 == inx){
+    //Handle backtracking
+    //Mark current pos unreachable
+    dum_maze[ppos->i][ppos->j] = 1;
+    //Reverse direction
+    pdir->i = -pdir->i;
+    pdir->j = -pdir->j;
+    //Set pos to this
+    ppos->i += pdir->i;
+    ppos->j += pdir->j;
+  }
+  
+  return true;
+}
+
+
+
 size_t solve_one_hand_on_wall(size_t size, int maze[size][size], int path[MAX_PATH_FACTOR * size*size], size_t path_len){
   if(size < 2)
     return path_len;
@@ -366,7 +508,6 @@ size_t solve_one_hand_on_wall(size_t size, int maze[size][size], int path[MAX_PA
 }
 
 
-
 int main(int argc, char* argv[]){
   rl_init_lib("raylib");
   rl_set_trace_log_level(LOG_WARNING);
@@ -396,11 +537,14 @@ int main(int argc, char* argv[]){
   
   enum{MAZE_SIZE = 31};
   int maze[MAZE_SIZE][MAZE_SIZE] = {0};
-
-  
+  int dum_maze[MAZE_SIZE][MAZE_SIZE] = {0};
+  IVec2 dum_maze_cell = {0};
+  IVec2 dum_maze_dir = {0};
   IVec2 last_cell;
-  reset_maze(MAZE_SIZE, maze, &last_cell);
   
+  reset_maze(MAZE_SIZE, maze, &last_cell);
+  bool dum_maze_ready = false;
+  //init_dum_maze_data(MAZE_SIZE,maze, dum_maze, &dum_maze_cell, &dum_maze_dir);
 
   int cell_wid = 5*win_wid / (7*MAZE_SIZE);
   int cell_hei = 5*win_hei / (7*MAZE_SIZE);
@@ -483,6 +627,8 @@ int main(int argc, char* argv[]){
     if(rl_is_key_pressed('R')){
       reset_maze(MAZE_SIZE, maze, &last_cell);
       curr_path_len = 1;
+      dum_maze_ready = false;
+
     }
     if(rl_is_key_pressed('P')){
       curr_path_len = 1;
@@ -490,6 +636,19 @@ int main(int argc, char* argv[]){
     if(rl_is_key_down('H')){
       curr_path_len = solve_one_hand_on_wall(MAZE_SIZE, maze,curr_path, curr_path_len);
     }
+    if(rl_is_key_released('D')){
+      if(!dum_maze_ready)
+	init_dum_maze_data(MAZE_SIZE,maze, dum_maze, &dum_maze_cell, &dum_maze_dir);
+      dum_maze_ready = true;
+      move_one_step_in_dum_maze(MAZE_SIZE, dum_maze,
+				&dum_maze_cell, &dum_maze_dir,
+				maze);
+      curr_path_len = fill_path_by_dum_maze(MAZE_SIZE, dum_maze, curr_path);
+    }
+    if(rl_is_key_pressed('F')){
+      dum_maze_ready = false;
+    }
+    
     rl_begin_drawing();
     rl_clear_background(RAYWHITE);
     for(int i=0;i<MAZE_SIZE;++i){
@@ -508,7 +667,7 @@ int main(int argc, char* argv[]){
     }
 
     //Draw path
-    for(size_t i = 0; i < curr_path_len-1; ++i){
+    for(int i = 0; i < (int)curr_path_len-1; ++i){
       IVec2 src={
 	.i = curr_path[i] / MAZE_SIZE,
 	.j = curr_path[i] % MAZE_SIZE,
