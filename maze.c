@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <math.h>
 #ifndef _countof
 #define _countof(arr) (sizeof(arr)/sizeof((arr)[0]))
 #endif
@@ -197,6 +198,59 @@ bool is_valid_pos(int i, int j, size_t size){
   return (i >= 0) && (j >= 0) && (i < (int)size) && (j < (int)size);
 }
 
+//Returns 0,0 if not found , else retruns one of 4 directions in + multiplied by
+//length of wall to clear
+//This function sets yellow, ie modifies maze
+IVec2 get_next_maze_vec(size_t size, int maze[size][size], IVec2 cell, int* plen){
+  *plen = 0;
+  if(!is_valid_pos(cell.i, cell.j, size))
+    return (IVec2){0};
+  if(3 != maze[cell.i][cell.j])
+    return (IVec2){0};
+  
+  IVec2 dir = {1,0};
+
+  IVec2 dirs[4] = {0};
+  int lens[4] = {0};
+  int dir_count = 0;
+  for(int i = 0; i < 4; ++i){
+    IVec2 check_box = cell;
+    int len = 0;
+    do{
+      check_box.x += dir.x;
+      check_box.y += dir.y;
+      if(!is_valid_pos(check_box.i, check_box.j, size)){
+	break;
+      }
+      if(1 == maze[check_box.i][check_box.j]){
+	len++;
+      }
+      else if(0 == maze[check_box.i][check_box.j]){
+	
+	dirs[dir_count] = dir;
+	lens[dir_count] = len;
+	dir_count++;
+	break;
+      }
+      else{
+	break;
+      }
+
+    }while(true);
+    IVec2 rot = {.x = -dir.y, .y = dir.x};
+    dir = rot;
+  }
+  if(dir_count == 0){
+    maze[cell.i][cell.j] = 2;
+    return (IVec2){0};
+  }
+
+  dir_count = rand() % dir_count;
+  *plen = lens[dir_count];
+  return dirs[dir_count];
+}
+
+//This function sets yellow, ie modifies maze
 IVec2 get_next_maze_cell(size_t size, int maze[size][size], IVec2 cell){
 
   IVec2 res = {-1,-1};
@@ -287,13 +341,72 @@ IVec2 add_maze_cell_dfs(size_t size, int maze[size][size], IVec2 last_cell){
   //return add_maze_cell_bfs(size, maze);
 }
 
-void reset_maze(size_t size, int maze[size][size], IVec2* last_cell){
+
+IVec2 add_maze_cell_bfs_vec(size_t size, int maze[size][size]){
+  IVec2 next_vec ;
+  IVec2 last_cell;
+  int count = 0;
+  for(int i = 0; i < size; ++i){
+    for(int j = 0; j < size; ++j){
+      last_cell.i = i; last_cell.j = j;
+      int len = 0;
+      next_vec = get_next_maze_vec(size, maze, last_cell, &len);
+      if(next_vec.x || next_vec.y)
+	count++;
+    }
+  }
+  if(count == 0)
+    return (IVec2){-1,-1};
+  count = rand() % count;
+  for(int i = 0; i < size; ++i){
+    for(int j = 0; j < size; ++j){
+      last_cell.i = i; last_cell.j = j;
+      int len = 0;
+      next_vec = get_next_maze_vec(size, maze, last_cell, &len);
+      if(next_vec.x || next_vec.y){
+	if(0 != (count--)) continue;
+
+	IVec2 dir = next_vec;
+	for(int i =0 ; i < len+1; ++i){
+	  last_cell.i += dir.i;
+	  last_cell.j += dir.j;
+	  maze[last_cell.i][last_cell.j] = 3;
+	}
+	return last_cell;
+      }
+    }
+  }
+  assert(false);
+  return (IVec2){-2,-2};
+}
+IVec2 add_maze_cell_dfs_vec(size_t size, int maze[size][size], IVec2 last_cell){
+  //0 -> unexplored 1-> wall 2-> explored 3-> explored and is boundary
+
+  int len = 0;
+  IVec2 next_vec = get_next_maze_vec(size, maze, last_cell, &len);
+
+  if(next_vec.i || next_vec.j){
+
+    IVec2 dir = next_vec;
+    for(int i =0 ; i < len+1; ++i){
+      last_cell.i += dir.i;
+      last_cell.j += dir.j;
+      maze[last_cell.i][last_cell.j] = 3;
+    }
+    return last_cell;
+  }
+  
+  return (IVec2){-1,-1};
+  //return add_maze_cell_bfs(size, maze);
+}
+
+void reset_maze(size_t size, int maze[size][size], IVec2* last_cell, int stride){
   //fill
   for(int i = 0; i < size; ++i)
     for(int j = 0; j < size; ++j)
       maze[i][j] = 1;
-  for(int i = 0; i < size; i+=2)
-    for(int j = 0; j < size; j+=2)
+  for(int i = 0; i < size; i+=stride)
+    for(int j = 0; j < size; j+=stride)
       maze[i][j] = 0;
   maze[0][0] = 3;
   *last_cell=(IVec2){0,0};
@@ -535,14 +648,14 @@ int main(int argc, char* argv[]){
     PINK
   };
   
-  enum{MAZE_SIZE = 31};
+  enum{MAZE_SIZE = 41};
   int maze[MAZE_SIZE][MAZE_SIZE] = {0};
   int dum_maze[MAZE_SIZE][MAZE_SIZE] = {0};
   IVec2 dum_maze_cell = {0};
   IVec2 dum_maze_dir = {0};
   IVec2 last_cell;
-  
-  reset_maze(MAZE_SIZE, maze, &last_cell);
+  const int junction_stride = 4;
+  reset_maze(MAZE_SIZE, maze, &last_cell, junction_stride);
   bool dum_maze_ready = false;
   //init_dum_maze_data(MAZE_SIZE,maze, dum_maze, &dum_maze_cell, &dum_maze_dir);
 
@@ -619,13 +732,13 @@ int main(int argc, char* argv[]){
     
     if(rl_is_key_down(' ')){
       if(turn_counter < 8)
-	last_cell =  add_maze_cell_dfs(MAZE_SIZE, maze, last_cell);
+	last_cell =  add_maze_cell_dfs_vec(MAZE_SIZE, maze, last_cell);
       else
-	last_cell = add_maze_cell_bfs(MAZE_SIZE, maze);
+	last_cell = add_maze_cell_bfs_vec(MAZE_SIZE, maze);
       turn_counter = (turn_counter+1)%9;
     }
     if(rl_is_key_pressed('R')){
-      reset_maze(MAZE_SIZE, maze, &last_cell);
+      reset_maze(MAZE_SIZE, maze, &last_cell, junction_stride);
       curr_path_len = 1;
       dum_maze_ready = false;
 
@@ -636,7 +749,7 @@ int main(int argc, char* argv[]){
     if(rl_is_key_down('H')){
       curr_path_len = solve_one_hand_on_wall(MAZE_SIZE, maze,curr_path, curr_path_len);
     }
-    if(rl_is_key_released('D')){
+    if(rl_is_key_down('D')){
       if(!dum_maze_ready)
 	init_dum_maze_data(MAZE_SIZE,maze, dum_maze, &dum_maze_cell, &dum_maze_dir);
       dum_maze_ready = true;
