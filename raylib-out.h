@@ -1661,23 +1661,25 @@ RLAPI void (* rl_detach_audio_mixed_processor )(RlAudioCallback processor); // D
 
 
 // A cross platform way of loading library
+#include <stddef.h>
+
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 typedef HINSTANCE LibraryHandle;
-#define LOAD_LIBRARY LoadLibraryA
+#define LOAD_LIBRARY(name) LoadLibraryA(name)
 #define GET_PROC_ADDRESS GetProcAddress
 #define FREE_LIBRARY FreeLibrary
 #else
 #include <dlfcn.h>
 typedef void* LibraryHandle;
-#define LOAD_LIBRARY dlopen
+#define LOAD_LIBRARY(name) dlopen((name), RTLD_NOW | RTLD_LOCAL)
 #define GET_PROC_ADDRESS dlsym
 #define FREE_LIBRARY dlclose
 #endif
 
 LibraryHandle rl_lib_handle = NULL;
-void rl_init_lib(const char* raylib_name){
+static void rl_init_lib(const char* raylib_name){
   rl_lib_handle = LOAD_LIBRARY(raylib_name);
   rl_detach_audio_mixed_processor = (RLAPI void  (*) (RlAudioCallback processor)) GET_PROC_ADDRESS(rl_lib_handle,"DetachAudioMixedProcessor");
   rl_attach_audio_mixed_processor = (RLAPI void  (*) (RlAudioCallback processor)) GET_PROC_ADDRESS(rl_lib_handle,"AttachAudioMixedProcessor");
@@ -2233,8 +2235,8 @@ void rl_init_lib(const char* raylib_name){
   rl_init_window = (RLAPI void  (*) (int width, int height, const char *title)) GET_PROC_ADDRESS(rl_lib_handle,"InitWindow");
 }
 
-void rl_free_lib(void){
-  FreeLibrary(rl_lib_handle);
+static void rl_free_lib(void){
+  FREE_LIBRARY(rl_lib_handle);
 }
 
 #endif // RAYLIB_H
