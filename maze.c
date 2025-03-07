@@ -1,3 +1,12 @@
+#ifdef _WIN32
+#define OS_WINDOWS 1
+#elif defined(__linux__) || defined(__unix__) || defined(__posix__)
+#define OS_LINUX 1
+#else
+#error "Unsupported OS"
+#endif
+
+#if defined(OS_WINDOWS)
 #ifdef UNICODE
 #undef UNICODE
 #endif
@@ -5,6 +14,8 @@
 #undef _UNICODE
 #endif
 #define _CRT_SECURE_NO_WARNINGS
+#endif
+
 #include "raylib-out.h"
 
 #define nullptr ((void*)0)
